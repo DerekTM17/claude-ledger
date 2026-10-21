@@ -1,0 +1,200 @@
+/* Single deliberate dark theme: this mirrors ledger's existing look. */
+:root {
+  --void: #010509;
+  --surface: #061321;
+  --surface-hi: #0a1b2d;
+  --line: rgba(92, 200, 255, 0.14);
+  --line-hi: rgba(92, 200, 255, 0.34);
+  --text-1: #e4f1fb;
+  --text-2: #aecadb;
+  --text-3: #88a6b8;
+  --cyan: #5cc8ff;
+  --accent: #ff7a24;
+  --st-today: #ff7a24;
+  --st-active: #34e6a4;
+  --st-recent: #5cc8ff;
+  --st-quiet: #9fb4c4;
+  --st-never: #5b7180;
+  --f-display: "Chakra Petch", "Rajdhani", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+/* Keep the `hidden` attribute winning over class display rules: the sort/filter
+   toolbar is `hidden` until dashboard.js runs, and `.toolbar { display: flex }`
+   would otherwise show dead buttons with JavaScript off. */
+[hidden] { display: none !important; }
+body {
+  background: var(--void);
+  color: var(--text-1);
+  font: 400 16px/1.55 var(--f-body);
+  padding-inline: 16px;
+  padding-block: 0 64px;
+  /* Notes carry long unbroken paths, URLs and code; let them wrap. */
+  overflow-wrap: break-word;
+}
+.wrap { max-width: 980px; margin: 0 auto; }
+
+header.top {
+  display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between;
+  padding-block: 28px 20px; border-bottom: 1px solid var(--line);
+}
+.brand { font: 600 26px/1 var(--f-display); letter-spacing: 0.08em; color: var(--cyan); text-decoration: none; }
+.brand small { display: block; margin-top: 6px; font: 400 13px/1.3 var(--f-body); letter-spacing: 0; color: var(--text-3); }
+.search { flex: 1 1 260px; max-width: 360px; }
+.search label { display: block; font-size: 13px; color: var(--text-3); margin-bottom: 4px; }
+.search input {
+  width: 100%; padding: 9px 12px; border-radius: 6px;
+  background: var(--surface); border: 1px solid var(--line-hi); color: var(--text-1);
+  font: 400 15px var(--f-body);
+}
+input:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--cyan); outline-offset: 2px;
+}
+
+.summary {
+  display: flex; flex-wrap: wrap; gap: 8px 28px; padding-block: 22px 6px;
+  font-size: 15px; color: var(--text-2);
+}
+.summary strong { color: var(--text-1); font: 500 17px var(--f-mono); margin-right: 4px; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; padding-block: 14px 18px; }
+.seg { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.seg > span { font-size: 13px; color: var(--text-3); margin-right: 4px; }
+.seg button {
+  font: 500 14px var(--f-body); color: var(--text-2);
+  background: transparent; border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 12px; cursor: pointer;
+}
+.seg button:hover { border-color: var(--line-hi); color: var(--text-1); }
+.seg button[aria-pressed="true"] { background: var(--surface-hi); border-color: var(--cyan); color: var(--text-1); }
+
+/* Status colour key: always visible, even with the toolbar hidden (JS off). */
+.key { display: flex; flex-wrap: wrap; gap: 8px 20px; list-style: none; margin: 0 0 18px; padding: 0; font-size: 13px; color: var(--text-3); }
+.key li { display: inline-flex; align-items: center; gap: 7px; }
+.key li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--st); flex: none; }
+.key li[data-status="never"]::before { background: transparent; border: 1.5px solid var(--st-never); }
+
+/* Project rows: one object, repeated with identical anatomy. */
+.list { display: grid; gap: 10px; }
+.row {
+  display: grid; grid-template-columns: 1fr auto; gap: 6px 24px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  border-left: 3px solid var(--st, var(--st-never));
+  padding: 16px 20px; cursor: pointer; text-align: left; width: 100%;
+  color: inherit; font: inherit;
+}
+.row:hover { border-color: var(--line-hi); border-left-color: var(--st); background: var(--surface-hi); }
+.row h2 { margin: 0; font: 600 19px/1.3 var(--f-body); color: var(--text-1); }
+.status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-2); margin-left: 12px; font-weight: 500; }
+.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--st); }
+.lines { grid-column: 1; display: grid; gap: 3px; font-size: 15px; }
+.lines p { margin: 0; color: var(--text-2); }
+.lines .k { color: var(--text-3); display: inline-block; min-width: 7.5em; font-size: 14px; }
+.lines .v { color: var(--text-1); }
+.counts { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; font-size: 13px; color: var(--text-3); white-space: nowrap; }
+.counts b { display: block; font: 500 22px/1.1 var(--f-mono); color: var(--text-1); }
+/* Own line: inline, "to do now" and "1 later" ran together as "to do now1 later". */
+.counts .later { display: block; margin-top: 4px; }
+.empty { color: var(--text-3); font-style: italic; }
+
+/* Project page */
+.back { display: inline-block; margin-block: 24px 8px; color: var(--cyan); text-decoration: none; font-size: 15px; background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--f-body); }
+.p-head h1 { margin: 0 0 6px; font: 600 32px/1.2 var(--f-body); text-wrap: balance; }
+.p-head .status { margin-left: 0; font-size: 14px; }
+.p-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; margin-top: 28px; }
+@media (max-width: 760px) { .p-grid { grid-template-columns: minmax(0, 1fr); } }
+.sec h3 {
+  margin: 0 0 12px; font: 600 14px/1 var(--f-display); letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-2); display: flex; justify-content: space-between; align-items: baseline;
+}
+.sec h3 span { font: 400 13px var(--f-body); letter-spacing: 0; text-transform: none; color: var(--text-3); }
+/* minmax(0, …): a grid track otherwise grows to its longest unbreakable word
+   and pushes the page sideways on a phone. */
+.items { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+/* Direct children only: notes contain their own lists, which must not become cards. */
+.items > li { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.items .t { color: var(--text-1); font-weight: 500; }
+.items .m { margin-top: 4px; font-size: 13px; color: var(--text-3); display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.chip { font: 500 12px var(--f-body); color: var(--text-2); border: 1px solid var(--line-hi); border-radius: 999px; padding: 1px 8px; }
+.log li .d { font: 400 13px var(--f-mono); color: var(--text-3); }
+.log li .why { margin: 6px 0 0; color: var(--text-2); font-size: 15px; max-width: 62ch; }
+details.fold { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+details.fold > summary { cursor: pointer; padding: 12px 14px; color: var(--text-2); font-weight: 500; list-style: none; }
+details.fold > summary::before { content: "▸ "; color: var(--cyan); }
+details.fold[open] > summary::before { content: "▾ "; }
+details.fold .inner { padding: 0 14px 14px; color: var(--text-2); font-size: 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+details.fold code, .mono { font: 400 13px var(--f-mono); color: var(--text-2); word-break: break-word; }
+
+@media (max-width: 560px) {
+  .row { grid-template-columns: 1fr; }
+  .counts { grid-column: 1; grid-row: auto; text-align: left; display: flex; gap: 16px; align-items: baseline; }
+  .counts b { display: inline; font-size: 17px; margin-right: 4px; }
+  .counts .later { margin-top: 0; }
+  .status { margin-left: 0; display: flex; margin-top: 4px; }
+  .lines .k { min-width: 0; display: block; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .row, .seg button { transition: border-color .15s, background .15s; }
+}
+
+/* Status color comes from data-status everywhere (row stripe, dot, legend). */
+[data-status="today"]  { --st: var(--st-today); }
+[data-status="active"] { --st: var(--st-active); }
+[data-status="recent"] { --st: var(--st-recent); }
+[data-status="quiet"]  { --st: var(--st-quiet); }
+[data-status="never"]  { --st: var(--st-never); }
+[data-status="never"].status::before { background: transparent; border: 1.5px solid var(--st-never); }
+
+a.row { display: grid; color: inherit; text-decoration: none; }
+.row-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.row-head h2 { margin: 0; font: 600 19px/1.3 var(--f-body); }
+.row-head .status { margin-left: 0; }
+.none { color: var(--text-3); font-style: italic; }
+.foot { padding-block: 32px 0; color: var(--text-3); font-size: 13px; }
+.back { color: var(--cyan); text-decoration: none; }
+.sec h3 a { color: var(--text-1); text-decoration: none; }
+.sec h3 a:hover { text-decoration: underline; }
+h4.group { margin: 16px 0 8px; font: 500 13px var(--f-body); color: var(--text-3); }
+.items.done .t { color: var(--text-2); }
+code { font: 400 0.9em var(--f-mono); background: var(--surface-hi); border-radius: 4px; padding: 0 4px; }
+mark { background: rgba(255, 122, 36, 0.28); color: var(--text-1); border-radius: 2px; padding: 0 1px; }
+details.note { margin-top: 6px; }
+details.note > summary { cursor: pointer; color: var(--cyan); font-size: 13px; }
+.note-body { margin-top: 6px; color: var(--text-2); font-size: 14px; overflow-x: auto; }
+.note-body p, .note-body ul, .note-body ol { margin: 0 0 8px; }
+.note-body ul, .note-body ol { padding-left: 20px; }
+.note-body table { border-collapse: collapse; font-size: 13px; }
+.note-body th, .note-body td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+/* Code in a table cell stays whole; the table scrolls inside .note-body instead
+   of splitting identifiers like "az_psprs" across lines. */
+.note-body td code, .note-body th code { white-space: nowrap; word-break: normal; }
+.dev-block { display: grid; gap: 4px; }
+.dev-block .label { color: var(--text-3); font-size: 13px; }
+.dev-block p { margin: 0; }
+.scroll { overflow-x: auto; }
+table.commits { border-collapse: collapse; font-size: 13px; }
+table.commits td { padding: 2px 12px 2px 0; vertical-align: top; }
+/* SHA and date never break; .mono's break-word split them one digit per line
+   on a phone. The subject column wraps, and .scroll handles any excess. */
+table.commits td.mono { white-space: nowrap; word-break: normal; }
+.write-form { display: grid; gap: 6px; max-width: 560px; margin-top: 12px; }
+.write-form h4 { margin: 8px 0 4px; font: 600 15px var(--f-body); color: var(--text-1); }
+.write-form label { font-size: 13px; color: var(--text-2); }
+.write-form input, .write-form textarea, .write-form select {
+  background: var(--surface-hi); border: 1px solid var(--line-hi); border-radius: 6px;
+  color: var(--text-1); font: 400 15px var(--f-body); padding: 8px 10px; width: 100%;
+}
+.write-form button {
+  justify-self: start; margin-top: 6px; background: var(--surface-hi); color: var(--text-1);
+  border: 1px solid var(--cyan); border-radius: 999px; padding: 6px 16px; font: 500 14px var(--f-body); cursor: pointer;
+}
+.form-errors { margin: 0; padding: 10px 14px 10px 30px; border: 1px solid var(--accent); border-radius: 6px; color: var(--text-1); }
+.search-page h1 { font: 600 28px/1.2 var(--f-body); margin: 8px 0 20px; text-wrap: balance; }
+.search-page .sec { margin-bottom: 24px; }
+.search-page .t a { color: inherit; text-decoration: none; }
+.search-page .t a:hover { text-decoration: underline; }
+/* Snippets reuse .why but sit outside .log, so they got the browser's 1em
+   paragraph margins and a tall empty band under each hit. */
+.search-page .why { margin: 6px 0 0; color: var(--text-2); font-size: 15px; }

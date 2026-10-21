@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<main id="dash">
+  <div class="summary">
+    <span><strong>{{ summary.projects }}</strong>projects</span>
+    <span><strong>{{ summary.shipped_week }}</strong>shipped this week</span>
+    <span><strong>{{ summary.now_total }}</strong>things to do now</span>
+    <span><strong>{{ summary.quiet }}</strong>quiet for over a month</span>
+  </div>
+  <div class="toolbar" id="board-toolbar" hidden>
+    <div class="seg" id="sort" role="group" aria-label="Sort projects">
+      <span>Sort</span>
+      <button type="button" data-v="recent" aria-pressed="true">Recently active</button>
+      <button type="button" data-v="now" aria-pressed="false">Most to do now</button>
+      <button type="button" data-v="quiet" aria-pressed="false">Quiet longest</button>
+      <button type="button" data-v="name" aria-pressed="false">A–Z</button>
+    </div>
+    <div class="seg" id="filter" role="group" aria-label="Show projects">
+      <span>Show</span>
+      <button type="button" data-v="all" aria-pressed="true">All</button>
+      <button type="button" data-v="active" aria-pressed="false">Active this month</button>
+      <button type="button" data-v="quiet" aria-pressed="false">Quiet</button>
+    </div>
+  </div>
+  <ul class="key" aria-label="What the colours mean">
+    <li data-status="today">Shipped today</li>
+    <li data-status="active">Active this week</li>
+    <li data-status="recent">Active this month</li>
+    <li data-status="quiet">Quiet for over a month</li>
+    <li data-status="never">Nothing shipped yet</li>
+  </ul>
+  <p class="empty" id="board-empty" hidden>No projects match. Press Enter to search everything they contain.</p>
+  <div class="list" id="project-list">
+    {% for r in rows %}
+    <a class="row" href="/p/{{ r.slug }}" data-slug="{{ r.slug }}" data-status="{{ r.status_key }}"
+       data-age="{{ r.age if r.age is not none else '' }}" data-now="{{ r.now }}"
+       data-name="{{ r.name | lower }}" data-search="{{ r.search_text }}">
+      <div class="row-head"><h2>{{ r.name }}</h2><span class="status" data-status="{{ r.status_key }}">{{ r.status_label }}</span></div>
+      <div class="counts"><span><b>{{ r.now }}</b>to do now</span><span class="later">{{ r.later }} later</span></div>
+      <div class="lines">
+        {% if r.last_title %}
+        <p><span class="k">Finished <time datetime="{{ r.last_date }}" title="{{ r.last_date }}">{{ r.last_when }}</time></span> <span class="v">{{ r.last_title }}</span></p>
+        {% else %}
+        <p><span class="k">Finished</span> <span class="none">Nothing recorded yet</span></p>
+        {% endif %}
+        {% if r.next_up %}
+        <p><span class="k">Next up</span> <span class="v">{{ r.next_up }}</span></p>
+        {% else %}
+        <p><span class="k">Next up</span> <span class="none">Nothing queued</span></p>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</main>
+{% endblock %}
+{% block footer %}<span id="gen-stamp" data-generated="{{ generated_iso }}">Updated {{ generated_label }}</span>{% endblock %}
+{% block scripts %}<script src="{{ static_url(request, 'dashboard.js') }}"></script>{% endblock %}

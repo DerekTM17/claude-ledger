@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} · Ledger{% endblock %}
+{% block content %}
+<main class="project">
+  <a class="back" href="/">← All projects</a>
+  <div class="p-head">
+    <h1>{{ name }}</h1>
+    <span class="status" data-status="{{ status_key }}">{{ status_label }}</span>
+  </div>
+  <div class="p-grid">
+    <section class="sec" aria-labelledby="h-next">
+      <h3 id="h-next">Up next <span>{{ now_count }} to do now</span></h3>
+      {% if up_next %}
+        {% for g in up_next %}
+          {% if g.subsection %}<h4 class="group">{{ g.subsection }}</h4>{% endif %}
+          {# g['items'], not g.items — dict.items is a builtin method, so
+             dot-access on this key would silently return the bound method
+             instead of the list. #}
+          <ul class="items">{% for i in g['items'] %}{% include "_item.html" %}{% endfor %}</ul>
+        {% endfor %}
+      {% else %}
+        <p class="none">{{ "Nothing queued." if has_backlog else "No backlog yet." }}</p>
+      {% endif %}
+      {% for h, label in (("Soon", "Later"), ("Someday", "Someday")) %}
+      {% set n = later[h] | length %}
+      <details class="fold"><summary>{{ label }}: {{ n }} item{{ "" if n == 1 else "s" }}</summary>
+        <div class="inner">
+          {% if n %}<ul class="items">{% for i in later[h] %}{% include "_item.html" %}{% endfor %}</ul>
+          {% else %}<p class="none">Nothing here.</p>{% endif %}
+        </div>
+      </details>
+      {% endfor %}
+      {% set d = done | length %}
+      <details class="fold"><summary>Done: {{ d }} item{{ "" if d == 1 else "s" }}</summary>
+        <div class="inner">
+          {% if d %}<ul class="items done">{% for i in done %}{% include "_item.html" %}{% endfor %}</ul>
+          {% else %}<p class="none">Nothing finished yet.</p>{% endif %}
+        </div>
+      </details>
+    </section>
+
+    <section class="sec" aria-labelledby="h-fin">
+      <h3 id="h-fin">Recently finished</h3>
+      {% if finished %}
+        <ul class="items log">{% for e in finished[:recent_shown] %}{% include "_entry.html" %}{% endfor %}</ul>
+        {% if finished | length > recent_shown %}
+        <details class="fold"><summary>Show all {{ finished | length }}</summary>
+          <div class="inner"><ul class="items log">{% for e in finished[recent_shown:] %}{% include "_entry.html" %}{% endfor %}</ul></div>
+        </details>
+        {% endif %}
+      {% else %}
+        <p class="none">Nothing recorded yet.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <details class="fold dev" id="dev"{% if errors %} open{% endif %}>
+    <summary>For developers: notes, commits, commands</summary>
+    <div class="inner">
+      {% if memory_html %}
+      <div class="dev-block"><div class="label">Claude's notes on this project</div>
+        <div class="note-body">{{ memory_html }}</div>{% if memory_file %}<div class="mono">{{ memory_file }}</div>{% endif %}</div>
+      {% endif %}
+      <div class="dev-block"><div class="label">Recent commits</div>
+        {% if git.status == "ok" and git.commits %}
+          <div class="scroll"><table class="commits">
+            {% for c in git.commits %}<tr><td class="mono">{{ c.sha }}</td><td class="mono">{{ c.date }}</td><td>{{ c.subject }}</td></tr>{% endfor %}
+          </table></div>
+        {% else %}
+          {% set why_none = {"not_a_repo": "This folder isn't a git repository.",
+                             "git_missing": "Git isn't installed on this computer.",
+                             "error": "Git couldn't read the history."} %}
+          <p class="none">No commits to show. {{ why_none.get(git.status, "") }}</p>
+        {% endif %}
+      </div>
+      <div class="dev-block"><div class="label">Commands</div>
+        <div class="mono">ledger idea {{ slug }} "Headline" --note "Detail"</div>
+        <div class="mono">ledger ship {{ slug }} "What changed" --why "Why it matters"</div>
+        <div class="mono">ledger done {{ slug }} "words from the headline"</div>
+      </div>
+      <div class="dev-block"><div class="label">Folder</div><div class="mono">{{ path }}</div></div>
+      {% if writes_enabled %}
+      <form method="post" action="/p/{{ slug }}/backlog" class="write-form" id="form-backlog">
+        <h4>Add a backlog item</h4>
+        {% if errors.backlog %}<ul class="form-errors" role="alert">{% for m in errors.backlog %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+        <label for="f-text">Headline</label>
+        <input id="f-text" name="text" required value="{{ form.text | default('', true) }}">
+        <label for="f-note">Note (optional)</label>
+        <textarea id="f-note" name="note" rows="3">{{ form.note | default('', true) }}</textarea>
+        <label for="f-horizon">When</label>
+        <select id="f-horizon" name="horizon">
+          {% for h in ("Now", "Soon", "Someday") %}<option{% if (form.horizon | default("Soon")) == h %} selected{% endif %}>{{ h }}</option>{% endfor %}
+        </select>
+        <label for="f-tag">Tag (optional)</label>
+        <input id="f-tag" name="tag" maxlength="{{ tag_max }}" value="{{ form.tag | default('', true) }}">
+        <button type="submit">Add item</button>
+      </form>
+      <form method="post" action="/p/{{ slug }}/changelog" class="write-form" id="form-changelog">
+        <h4>Record finished work</h4>
+        {% if errors.changelog %}<ul class="form-errors" role="alert">{% for m in errors.changelog %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+        <label for="f-title">What changed</label>
+        <input id="f-title" name="title" required value="{{ form.title | default('', true) }}">
+        <label for="f-why">Why it matters</label>
+        <textarea id="f-why" name="why" rows="3" required>{{ form.why | default('', true) }}</textarea>
+        <button type="submit">Record it</button>
+      </form>
+      {% endif %}
+    </div>
+  </details>
+</main>
+{% endblock %}

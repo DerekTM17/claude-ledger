@@ -1,0 +1,12 @@
+<li class="item">
+  <div class="t">{{ i.headline }}</div>
+  {% if i.tags or i.added %}
+  <div class="m">
+    {% for t in i.tags %}<span class="chip">{{ t }}</span>{% endfor %}
+    {% if i.added %}<span>Added <time datetime="{{ i.added_iso }}" title="{{ i.added_iso }}">{{ i.added }}</time></span>{% endif %}
+  </div>
+  {% endif %}
+  {% if i.note_html %}
+  <details class="note"><summary>Details</summary><div class="note-body">{{ i.note_html | safe }}</div></details>
+  {% endif %}
+</li>

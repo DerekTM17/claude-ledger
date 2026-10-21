@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{% if q %}“{{ q }}” · {% endif %}Search · Ledger{% endblock %}
+{% block content %}
+<main class="search-page">
+  <a class="back" href="/">← All projects</a>
+  <h1>{% if q %}Results for “{{ q }}”{% else %}Search all projects{% endif %}</h1>
+  {% if empty_state %}
+    <p class="none">Type a word in the search box. Put it in quotes to match capital letters exactly.</p>
+  {% elif not groups %}
+    <p class="none">Nothing matches “{{ q }}”.</p>
+  {% else %}
+    {% for g in groups %}
+    <section class="sec">
+      <h3><a href="/p/{{ g.slug }}">{{ g.name }}</a> <span>{{ g.hits | length }} match{{ "" if g.hits | length == 1 else "es" }}</span></h3>
+      <ul class="items">
+        {% for h in g.hits %}
+        <li class="item">
+          <div class="m"><span class="chip">{{ h.kind }}</span>{% if h.when %}<span>{{ h.when }}</span>{% endif %}</div>
+          <div class="t"><a href="/p/{{ g.slug }}">{{ h.text }}</a></div>
+          {% if h.snippet %}<p class="why">{{ h.snippet }}</p>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endfor %}
+  {% endif %}
+</main>
+{% endblock %}

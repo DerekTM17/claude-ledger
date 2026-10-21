@@ -1,0 +1,8 @@
+<li class="entry">
+  <div class="d"><time datetime="{{ e.date }}" title="{{ e.date }}">{{ e.when | capitalize }}</time></div>
+  <div class="t">{{ e.title }}</div>
+  {% if e.why %}<p class="why">{{ e.why }}</p>{% endif %}
+  {% if e.more_html %}
+  <details class="note"><summary>More detail</summary><div class="note-body">{{ e.more_html | safe }}</div></details>
+  {% endif %}
+</li>
