@@ -144,9 +144,11 @@ def status(
         table.add_column("MEMORY", overflow="ellipsis", no_wrap=True, ratio=1)
     for r in rows:
         when = display.relative_date(r["last_shipped_date"], today)
-        last = (f"{when} · {display.plain(display.clamp_chars(r['last_shipped_title'] or ''))}"
+        last = (f"{when} · {display.clamp_chars(display.plain(r['last_shipped_title'] or ''))}"
                 if r["last_shipped_date"] else "—")
-        nxt = display.plain(display.clamp_words(r["next_up"])[0]) if r["next_up"] else "—"
+        # plain() before clamping: a clamp can cut a link in half, and half a
+        # link stays raw.
+        nxt = display.clamp_words(display.plain(r["next_up"]))[0] if r["next_up"] else "—"
         c = r["backlog"]
         # escape(): headlines contain [tag] brackets Rich would read as markup.
         cells = [r["slug"], escape(last), escape(nxt), str(c["now"]), str(c["soon"] + c["someday"])]
@@ -201,6 +203,7 @@ def idea(
         err.print("--now and --someday are mutually exclusive.")
         raise typer.Exit(code=2)
     horizon = "Now" if now else "Someday" if someday else "Soon"
+    tag = tag.strip() if tag else tag  # the web form strips; match it
     p = _resolve_project_or_exit(project)
     from ledger import writer
     from ledger.rules import RuleViolation

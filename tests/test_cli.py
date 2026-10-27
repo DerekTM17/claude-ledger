@@ -670,6 +670,16 @@ def test_idea_success_message_keeps_tag(runner, tmp_path, monkeypatch):
     assert "(Soon, [bug])" in res.output
 
 
+def test_idea_strips_spaces_around_tag(runner, tmp_path, monkeypatch):
+    """The web form strips the tag; the CLI used to refuse ' bug'."""
+    _init_project(tmp_path / "projects", "alpha")
+    monkeypatch.setenv("LEDGER_PROJECTS_ROOT", str(tmp_path / "projects"))
+    monkeypatch.setenv("COLUMNS", "200")
+    res = runner.invoke(app, ["idea", "alpha", "Fix the footer", "--tag", " bug "])
+    assert res.exit_code == 0, res.output
+    assert "(Soon, [bug])" in res.output
+
+
 def test_idea_refuses_a_tag_that_isnt_one_short_word(runner, tmp_path, monkeypatch):
     proj = _init_project(tmp_path / "projects", "alpha")
     before = (proj / "docs" / "BACKLOG.md").read_text()

@@ -111,6 +111,18 @@ def test_greeting_is_plain(projects_root: Path):
     assert "ledger done" in text
 
 
+def test_greeting_never_shows_half_a_link(projects_root: Path):
+    """plain() must run before the clamp, or a cut link shows as '[the…'."""
+    p = _make_project(projects_root, "alpha", with_docs=True)
+    # The link starts just before the 70-character cut, so it gets split.
+    long = "Made " + "x" * 55 + " [the linked page](https://example.com/x) better"
+    (p / "docs" / "CHANGELOG.md").write_text(
+        f"# alpha — Changelog\n\n## 2026-05-20\n\n### {long}\n")
+    out = hooks.session_start({"cwd": str(p), "source": "startup", "session_id": "s"})
+    text = out["hookSpecificOutput"]["additionalContext"]
+    assert "[the" not in text and "](" not in text
+
+
 def test_orphan_note_wording(projects_root: Path):
     # Reuse the two-orphan setup from test_orphan_note_aggregates_all_orphans_and_dedupes_commits.
     p = _make_project(projects_root, "alpha", with_docs=True)
@@ -428,3 +440,64 @@ def test_ship_clears_dead_orphans_but_keeps_live_sessions(projects_root: Path):
     assert "sid-live" in sessions
     out = hooks.session_start({"cwd": str(p), "source": "startup", "session_id": "sid-3"})
     assert "ended without a changelog entry" not in out["hookSpecificOutput"]["additionalContext"]
+
+
+# --- Sessions started above the projects (e.g. the home folder) ---
+
+
+def test_session_start_above_projects_summarises_all(projects_root: Path):
+    _make_project(projects_root, "alpha")
+    _make_project(projects_root, "beta")
+    _make_project(projects_root, "gamma", with_docs=False)  # untracked: left out
+    out = hooks.session_start({"cwd": str(projects_root.parent),
+                               "source": "startup", "session_id": "sid-h"})
+    text = out["hookSpecificOutput"]["additionalContext"]
+    assert "📋 Ledger · 2 projects, 2 to do now" in text
+    assert "alpha (" in text and "beta (" in text
+    assert "gamma" not in text
+    from ledger import state
+    s = state.load_state()
+    assert "sid-h" in s["projects"]["alpha"]["open_sessions"]
+    assert "sid-h" in s["projects"]["beta"]["open_sessions"]
+
+
+def test_session_end_above_projects_stubs_only_projects_with_work(projects_root: Path):
+    a = _make_project(projects_root, "alpha")
+    b = _make_project(projects_root, "beta")
+    home = projects_root.parent
+    hooks.session_start({"cwd": str(home), "source": "startup", "session_id": "sid-h"})
+    _commit(a, "feat-a")
+    hooks.session_end({"cwd": str(home), "session_id": "sid-h", "transcript_path": ""})
+    assert "feat-a" in (a / "docs" / "SESSIONS.md").read_text(encoding="utf-8")
+    assert not (b / "docs" / "SESSIONS.md").exists()
+    from ledger import state
+    s = state.load_state()
+    assert s["projects"]["alpha"]["stub_pending"] is True
+    assert "sid-h" not in s["projects"]["alpha"]["open_sessions"]
+    assert "sid-h" not in s["projects"]["beta"]["open_sessions"]
+
+
+def test_session_start_above_projects_names_project_with_orphan(projects_root: Path):
+    a = _make_project(projects_root, "alpha")
+    _make_project(projects_root, "beta")
+    from ledger import state
+    with state.locked_state() as st:
+        state.add_open_session(st, "alpha", "dead", _recent(), _head(a))
+    _commit(a, "lost-work")
+    out = hooks.session_start({"cwd": str(projects_root.parent),
+                               "source": "startup", "session_id": "sid-h"})
+    text = out["hookSpecificOutput"]["additionalContext"]
+    assert "alpha: ⚠️ 1 earlier session ended without a changelog entry" in text
+    assert "beta: ⚠️" not in text
+
+
+def test_session_start_above_projects_commits_pending_stub(projects_root: Path):
+    a = _make_project(projects_root, "alpha")
+    hooks.session_start({"cwd": str(a), "source": "startup", "session_id": "s1"})
+    _commit(a, "work")
+    hooks.session_end({"cwd": str(a), "session_id": "s1", "transcript_path": ""})
+    hooks.session_start({"cwd": str(projects_root.parent),
+                         "source": "startup", "session_id": "s2"})
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=a,
+                            capture_output=True, text=True).stdout
+    assert "SESSIONS.md" not in status

@@ -27,19 +27,29 @@ def _projects_root() -> Path:
 
 
 def _resolve_project_for_cwd(cwd: Path) -> Project | None:
+    project, _ = _resolve_cwd(cwd)
+    return project
+
+
+def _resolve_cwd(cwd: Path) -> tuple[Project | None, list[Project]]:
+    """Return (the project containing `cwd`, []) or, when `cwd` is a folder
+    that holds projects (e.g. the home folder), (None, those projects).
+
+    Most sessions start from the home folder, so without the second case the
+    hooks never fired at all."""
     try:
         cfg = load_config(default_config_path())
         projects = discover_projects(projects_root=_projects_root(), config=cfg)
     except Exception:
-        return None
+        return None, []
     cwd = cwd.resolve()
+    inside: list[Project] = []
     for p in projects:
-        try:
-            cwd.relative_to(p.path)
-            return p
-        except ValueError:
-            continue
-    return None
+        if cwd == p.path or p.path in cwd.parents:
+            return p, []
+        if cwd in p.path.parents:
+            inside.append(p)
+    return None, inside
 
 
 ADDED_RE = re.compile(r"<!--\s*added\s+(\d{4}-\d{2}-\d{2})\s*-->")
@@ -84,7 +94,7 @@ def _build_summary(project: Project, added_since: int,
     today = _date.today()
     line = f"📋 Ledger · {project.slug}: {counts['now']} to do now, {later} later"
     if recent:
-        title = display.plain(display.clamp_chars(recent[1]))
+        title = display.clamp_chars(display.plain(recent[1]))
         line += f" · last finished {display.relative_date(recent[0], today)}: “{title}”"
     if added_since:
         line += f" · {added_since} added since your last visit"
@@ -159,52 +169,101 @@ def _orphan_note(state: dict[str, Any], slug: str, current_head: str | None,
             f"({n} {commits} since). Say \"capture the missed sessions\".")
 
 
+def _open_session(state: dict[str, Any], project: Project, sid: str
+                  ) -> tuple[int, str | None]:
+    """Per-project bookkeeping at session start, under the caller's lock.
+
+    Commits a stub a previous SessionEnd left behind, collects the orphan
+    note, and records this session's open marker. Returns (items added
+    since the last visit, orphan note)."""
+    head = _rev_parse_head(project.path)
+    proj_state = state_mod.get_project(state, project.slug)
+    # If a SessionEnd left SESSIONS.md uncommitted, commit it now.
+    if proj_state.get("stub_pending"):
+        from ledger import gitwrite
+        gitwrite.commit_file(
+            project.path, "docs/SESSIONS.md",
+            "docs(sessions): record stub from prior session",
+        )
+        proj_state["stub_pending"] = False
+    orphan = _orphan_note(state, project.slug, head, sid, project.path)
+    added_since = _count_added_since(project.backlog_path,
+                                     proj_state.get("last_seen_at"))
+    from ledger import liveness
+    harness = liveness.harness_process()
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    state_mod.add_open_session(
+        state, project.slug, sid, now, head,
+        pid=harness[0] if harness else None,
+        pid_start=harness[1] if harness else None,
+    )
+    proj_state["last_seen_at"] = now
+    proj_state["last_seen_head"] = head
+    return added_since, orphan
+
+
+def _is_tracked(project: Project) -> bool:
+    return project.backlog_path.exists() or project.changelog_path.exists()
+
+
+def _build_multi_summary(projects: list[Project],
+                         orphans: list[tuple[str, str]]) -> str:
+    """One-line overview for a session started above the projects, plus one
+    line per project with uncaptured work."""
+    from ledger import display
+    today = _date.today()
+    now_total = 0
+    recent: list[tuple[str, str, str]] = []
+    for p in projects:
+        now_total += markdown.backlog_counts(p.backlog_path)["now"]
+        entry = markdown.most_recent_changelog_entry(p.changelog_path)
+        if entry:
+            recent.append((entry[0], p.slug, entry[1]))
+    recent.sort(reverse=True)
+    line = f"📋 Ledger · {len(projects)} projects, {now_total} to do now"
+    if recent:
+        parts = [
+            f"{slug} ({display.relative_date(d, today)}: "
+            f"“{display.clamp_chars(display.plain(title))}”)"
+            for d, slug, title in recent[:3]
+        ]
+        line += " · recently finished: " + "; ".join(parts)
+    line += "."
+    return "\n".join([line] + [f"{slug}: {note}" for slug, note in orphans])
+
+
 def session_start(payload: dict[str, Any]) -> dict[str, Any] | None:
     """Return a hookSpecificOutput dict for the harness, or None for no-op."""
     try:
         cwd = Path(payload.get("cwd", ".")).resolve()
         source = payload.get("source", "startup")
         sid = payload.get("session_id", "")
-        project = _resolve_project_for_cwd(cwd)
+        project, inside = _resolve_cwd(cwd)
         if project is None:
-            return None
-        if not project.backlog_path.exists() and not project.changelog_path.exists():
+            tracked = [p for p in inside if _is_tracked(p)]
+            if not tracked:
+                return None
+            orphans: list[tuple[str, str]] = []
+            # Whole read-modify-write under the lock, as in the one-project case.
+            with state_mod.locked_state() as state:
+                for p in tracked:
+                    _, orphan = _open_session(state, p, sid)
+                    if orphan:
+                        orphans.append((p.slug, orphan))
+            return _emit(_instruction(source, _build_multi_summary(tracked, orphans)))
+        if not _is_tracked(project):
             if source in ("startup", "clear"):
                 return _emit(
                     f"📋 ledger · {project.slug} — not tracked yet. "
                     f"Run `ledger init {project.slug}` to start."
                 )
             return None
-        head = _rev_parse_head(project.path)
         # Whole read-modify-write under the lock, so a concurrent hook can't
         # drop this marker or re-commit a stub we've already cleared.
         with state_mod.locked_state() as state:
-            proj_state = state_mod.get_project(state, project.slug)
-            # If a SessionEnd left SESSIONS.md uncommitted, commit it now.
-            if proj_state.get("stub_pending"):
-                from ledger import gitwrite
-                gitwrite.commit_file(
-                    project.path, "docs/SESSIONS.md",
-                    "docs(sessions): record stub from prior session",
-                )
-                proj_state["stub_pending"] = False
-            orphan = _orphan_note(state, project.slug, head, sid, project.path)
-            added_since = _count_added_since(project.backlog_path,
-                                             proj_state.get("last_seen_at"))
-            summary = _build_summary(project, added_since,
-                                     pending_stub=False, orphan_note=orphan)
-            # Record this session's marker
-            from ledger import liveness
-            harness = liveness.harness_process()
-            state_mod.add_open_session(
-                state, project.slug, sid,
-                datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                head,
-                pid=harness[0] if harness else None,
-                pid_start=harness[1] if harness else None,
-            )
-            proj_state["last_seen_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            proj_state["last_seen_head"] = head
+            added_since, orphan = _open_session(state, project, sid)
+        summary = _build_summary(project, added_since,
+                                 pending_stub=False, orphan_note=orphan)
         return _emit(_instruction(source, summary))
     except Exception:
         return None
@@ -215,39 +274,47 @@ def session_end(payload: dict[str, Any]) -> None:
 
     Deliberately minimal: NO git commit here (see spec §5 — the kill-before-
     finish bug). The atomic file append happens first; the commit happens on
-    the next SessionStart's reconciliation step.
+    the next SessionStart's reconciliation step. A session started above the
+    projects gets a stub in each project whose HEAD moved.
     """
     try:
         cwd = Path(payload.get("cwd", ".")).resolve()
         sid = payload.get("session_id", "")
         transcript_path = payload.get("transcript_path") or None
-        project = _resolve_project_for_cwd(cwd)
-        if project is None:
+        project, inside = _resolve_cwd(cwd)
+        projects = [project] if project else [p for p in inside if _is_tracked(p)]
+        if not projects:
             return None
-        head = _rev_parse_head(project.path)
-        branch = _git(["symbolic-ref", "--short", "-q", "HEAD"], project.path) or None
         last_user = _last_user_message(transcript_path) if transcript_path else None
         with state_mod.locked_state() as state:
-            proj_state = state_mod.get_project(state, project.slug)
-            start_head = proj_state["open_sessions"].get(sid, {}).get("start_head")
-            diff_stat = ""
-            subjects: list[str] = []
-            if start_head and head and start_head != head:
-                diff_stat = _git(["diff", "--stat", f"{start_head}..{head}"], project.path)
-                log = _git(["log", "--oneline", f"{start_head}..{head}"], project.path)
-                subjects = [ln for ln in log.splitlines() if ln.strip()]
-            if diff_stat or subjects:
-                from ledger import writer
-                writer.append_session_stub(
-                    project, session_id=sid, branch=branch,
-                    diff_stat=diff_stat, commit_subjects=subjects,
-                    last_user_msg=last_user,
-                )
-                proj_state["stub_pending"] = True
-            state_mod.clear_open_session(state, project.slug, sid)
+            for p in projects:
+                _close_session(state, p, sid, last_user)
         return None
     except Exception:
         return None
+
+
+def _close_session(state: dict[str, Any], project: Project, sid: str,
+                   last_user: str | None) -> None:
+    head = _rev_parse_head(project.path)
+    proj_state = state_mod.get_project(state, project.slug)
+    start_head = proj_state["open_sessions"].get(sid, {}).get("start_head")
+    diff_stat = ""
+    subjects: list[str] = []
+    if start_head and head and start_head != head:
+        branch = _git(["symbolic-ref", "--short", "-q", "HEAD"], project.path) or None
+        diff_stat = _git(["diff", "--stat", f"{start_head}..{head}"], project.path)
+        log = _git(["log", "--oneline", f"{start_head}..{head}"], project.path)
+        subjects = [ln for ln in log.splitlines() if ln.strip()]
+        if diff_stat or subjects:
+            from ledger import writer
+            writer.append_session_stub(
+                project, session_id=sid, branch=branch,
+                diff_stat=diff_stat, commit_subjects=subjects,
+                last_user_msg=last_user,
+            )
+            proj_state["stub_pending"] = True
+    state_mod.clear_open_session(state, project.slug, sid)
 
 
 def _last_user_message(transcript_path: str) -> str | None:
