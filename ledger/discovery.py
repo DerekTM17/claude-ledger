@@ -11,16 +11,22 @@ def default_projects_root() -> Path:
     return Path.home() / "projects"
 
 
-def _is_git_repo(p: Path) -> bool:
-    return p.is_dir() and (p / ".git").exists()
+def _is_git_repo(p: Path, include_worktrees: bool = False) -> bool:
+    # A worktree's `.git` is a file pointing back at the main repo. It holds
+    # a copy of that project's docs, so listing it would count the project
+    # twice.
+    git = p / ".git"
+    return p.is_dir() and (git.exists() if include_worktrees else git.is_dir())
 
 
 def discover_projects(projects_root: Path | None = None,
-                      config: LedgerConfig | None = None) -> list[Project]:
+                      config: LedgerConfig | None = None,
+                      include_worktrees: bool = False) -> list[Project]:
     """Return projects in slug-sorted order.
 
     Auto-scans `projects_root` for immediate subdirs with `.git/`. Applies
     `config.exclude` (by slug) and `config.include` (external paths).
+    Worktrees are left out unless `include_worktrees` is set.
     """
     root = projects_root or default_projects_root()
     cfg = config or LedgerConfig()
@@ -29,7 +35,7 @@ def discover_projects(projects_root: Path | None = None,
 
     if root.exists():
         for child in root.iterdir():
-            if _is_git_repo(child):
+            if _is_git_repo(child, include_worktrees):
                 slug = child.name
                 if slug not in cfg.exclude:
                     found[slug] = Project(slug=slug, path=child.resolve())

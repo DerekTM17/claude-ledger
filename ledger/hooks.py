@@ -39,7 +39,12 @@ def _resolve_cwd(cwd: Path) -> tuple[Project | None, list[Project]]:
     hooks never fired at all."""
     try:
         cfg = load_config(default_config_path())
-        projects = discover_projects(projects_root=_projects_root(), config=cfg)
+        # Worktrees count when the session is inside one, but not in the
+        # overview, where they would repeat their main project.
+        projects = discover_projects(projects_root=_projects_root(), config=cfg,
+                                     include_worktrees=True)
+        listed = {p.slug for p in discover_projects(projects_root=_projects_root(),
+                                                    config=cfg)}
     except Exception:
         return None, []
     cwd = cwd.resolve()
@@ -47,7 +52,7 @@ def _resolve_cwd(cwd: Path) -> tuple[Project | None, list[Project]]:
     for p in projects:
         if cwd == p.path or p.path in cwd.parents:
             return p, []
-        if cwd in p.path.parents:
+        if cwd in p.path.parents and p.slug in listed:
             inside.append(p)
     return None, inside
 
@@ -191,15 +196,40 @@ def _open_session(state: dict[str, Any], project: Project, sid: str
                                      proj_state.get("last_seen_at"))
     from ledger import liveness
     harness = liveness.harness_process()
+    start_head = _supersede_same_window(proj_state, sid, harness) or head
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     state_mod.add_open_session(
-        state, project.slug, sid, now, head,
+        state, project.slug, sid, now, start_head,
         pid=harness[0] if harness else None,
         pid_start=harness[1] if harness else None,
     )
     proj_state["last_seen_at"] = now
     proj_state["last_seen_head"] = head
     return added_since, orphan
+
+
+def _supersede_same_window(proj_state: dict[str, Any], sid: str,
+                           harness: tuple[int, str] | None) -> str | None:
+    """Drop older markers left by this same Claude window and return the
+    oldest one's start head, or None if there were none.
+
+    One window runs one session at a time, so its older markers belong to
+    sessions that were resumed or cut off without a SessionEnd. Left alone
+    they look alive for as long as the window stays open. Keeping the
+    oldest start head means work done under them is still captured."""
+    if not harness:
+        return None
+    pid, pid_start = harness
+    same = sorted(
+        ((info.get("started_at") or "", other)
+         for other, info in proj_state["open_sessions"].items()
+         if other != sid and info.get("pid") == pid
+         and info.get("pid_start") == pid_start),
+    )
+    oldest = proj_state["open_sessions"][same[0][1]].get("start_head") if same else None
+    for _, other in same:
+        proj_state["open_sessions"].pop(other, None)
+    return oldest
 
 
 def _is_tracked(project: Project) -> bool:

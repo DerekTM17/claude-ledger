@@ -41,8 +41,10 @@ When you finish a meaningful piece of work in a project with a
 ## Sessions that ended without an entry
 
 The session greeting may say `⚠️ N earlier sessions ended without a changelog
-entry`. When the user says "capture the missed sessions" (or asks what was
-missed):
+entry`. A session started from the home folder shows one such line per
+project, prefixed with the project's name (`alpha: ⚠️ …`). When the user says
+"capture the missed sessions" (or asks what was missed), do this for each
+project named:
 
 1. Read the latest stubs in `docs/SESSIONS.md`, if the file exists.
 2. Run `git log --oneline -30` in the project and find the commits since the

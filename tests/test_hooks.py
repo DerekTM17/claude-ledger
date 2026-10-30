@@ -501,3 +501,46 @@ def test_session_start_above_projects_commits_pending_stub(projects_root: Path):
     status = subprocess.run(["git", "status", "--porcelain"], cwd=a,
                             capture_output=True, text=True).stdout
     assert "SESSIONS.md" not in status
+
+
+def test_new_session_in_same_window_replaces_its_old_markers(projects_root: Path, monkeypatch):
+    """A resumed or cut-off session leaves its marker behind; it looked alive
+    for as long as the window stayed open, so markers piled up."""
+    p = _make_project(projects_root, "alpha", with_docs=True)
+    from ledger import liveness, state
+    monkeypatch.setattr(liveness, "harness_process", lambda: (4242, "777"))
+    hooks.session_start({"cwd": str(p), "source": "startup", "session_id": "old"})
+    first_head = _head(p)
+    _commit(p, "work-under-old")
+    hooks.session_start({"cwd": str(p), "source": "resume", "session_id": "new"})
+    markers = state.load_state()["projects"]["alpha"]["open_sessions"]
+    assert list(markers) == ["new"]
+    # The old session's commit is still covered by the new marker.
+    assert markers["new"]["start_head"] == first_head
+
+
+def test_other_windows_markers_are_kept(projects_root: Path, monkeypatch):
+    p = _make_project(projects_root, "alpha", with_docs=True)
+    from ledger import liveness, state
+    monkeypatch.setattr(liveness, "is_alive", lambda info: True)  # both windows open
+    monkeypatch.setattr(liveness, "harness_process", lambda: (1, "a"))
+    hooks.session_start({"cwd": str(p), "source": "startup", "session_id": "w1"})
+    monkeypatch.setattr(liveness, "harness_process", lambda: (2, "b"))
+    hooks.session_start({"cwd": str(p), "source": "startup", "session_id": "w2"})
+    markers = state.load_state()["projects"]["alpha"]["open_sessions"]
+    assert set(markers) == {"w1", "w2"}
+
+
+def test_overview_leaves_out_worktrees(projects_root: Path):
+    a = _make_project(projects_root, "alpha")
+    subprocess.run(["git", "worktree", "add", "-q", "-b", "wt",
+                    str(projects_root / "alpha-wt")], cwd=a, check=True)
+    out = hooks.session_start({"cwd": str(projects_root.parent),
+                               "source": "startup", "session_id": "h"})
+    text = out["hookSpecificOutput"]["additionalContext"]
+    assert "1 projects" in text or "1 project" in text
+    assert "alpha-wt" not in text
+    # A session inside the worktree still resolves to it.
+    inner = hooks.session_start({"cwd": str(projects_root / "alpha-wt"),
+                                 "source": "startup", "session_id": "w"})
+    assert "alpha-wt" in inner["hookSpecificOutput"]["additionalContext"]
